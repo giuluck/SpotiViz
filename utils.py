@@ -1,45 +1,77 @@
-from typing import List, Any, Optional
+from datetime import timedelta
+from typing import List, Any, Tuple, Optional
 
+import matplotlib.colors
 import numpy as np
 import pandas as pd
 
 
 class Song:
-    def __init__(self, name: str, path: str, color: str, release: str):
+    def __init__(self, name: str, song: str, profile: str, color: str, release: str, promo: List[Tuple[str, str]] = ()):
         """
         :param name: the song name.
-        :param path: the .csv filepath of the song.
+        :param song: the .csv filepath of the song data.
+        :param profile: the .csv filepath of the profile data.
         :param color: the color of the song to be used in plots.
         :param release: the release date of the song.
+        :param promo: the promo periods, indicated by start and end date.
         """
-        data = pd.read_csv(path)
-        data['date'] = pd.to_datetime(data['date'])
-        data = data.set_index('date').sort_index()
+        release = pd.to_datetime(release)
+        # get the song data
+        song = pd.read_csv(song)
+        song['date'] = pd.to_datetime(song['date'])
+        song = song.set_index('date').sort_index()
+        # get the profile data
+        profile = pd.read_csv(profile).rename(columns={'streams': 'tot streams'})
+        profile['date'] = pd.to_datetime(profile['date'])
+        profile = profile.set_index('date').sort_index()
+        # merge and process the two dataframes
+        data = song.join(profile)
+        data['followers'] = data['followers'] - data['followers'][release - timedelta(days=1)]
+        # store results
         self.data: pd.DataFrame = data
         self.name: str = name
-        self.path: str = path
         self.color: str = color
-        self.release: Any = pd.to_datetime(release)
+        self.release: Any = release
+        self.promos: List[Tuple[Any, Any]] = [(pd.to_datetime(s), pd.to_datetime(e)) for s, e in promo]
+
+    def rolling(self, window: int = 1, win_type: Optional[str] = 'exponential') -> pd.DataFrame:
+        """Creates a processed dataframe by averaging over a rolling window.
+
+        :param window: the moving average window size.
+        :param win_type: the moving average window type.
+        :return: a single processed dataframe.
+        """
+        data = self.data.rolling(window=window, win_type=win_type, center=True).mean().dropna()
+        data = data[data.index >= self.release - timedelta(days=1)]
+        return data.reset_index().reset_index(names='day')
 
 
-def process(songs: List[Song], window: int = 0, win_type: str = 'exponential') -> pd.DataFrame:
-    """
+def merge_songs(songs: List[Song], window: int = 1, win_type: Optional[str] = 'exponential') -> pd.DataFrame:
+    """Creates a single processed dataframe from multiple songs.
+
     :param songs: the list of songs to process.
     :param window: the moving average window size.
     :param win_type: the moving average window type.
     :return: a single processed dataframe.
     """
+    data = [song.rolling(window=window, win_type=win_type) for song in songs]
+    data = pd.concat(data, keys=[song.name for song in songs], names=['Song']).reset_index()
+    return data.drop(columns='level_1')
 
-    def _process(df: pd.DataFrame, release: Optional) -> pd.DataFrame:
-        df = df.copy()
-        if window > 0:
-            df = df.rolling(window, win_type=win_type).mean().dropna()
-        if release is not None:
-            df = df[df.index >= release]
-        df = df.reset_index()
-        df['day'] = np.arange(len(df)) + 1
-        df['cumulative streams'] = df['streams'].cumsum()
-        return df
 
-    data = [_process(df=s.data, release=s.release) for s in songs]
-    return pd.concat(data, keys=[s.name for s in songs], names=['Song'])
+def blend_color(c1: str, c2: str = '#FFFFFF', alpha: float = 0.5) -> str:
+    """Interpolates two colors given the factor alpha. When the second factor is white (#FFFFFF) it simulates alpha
+    transparency on white background (this is useful for .eps plots which do not support transparency, and also to have
+    a fake transparent color without showing the background grid).
+    
+    :param c1: the first color.
+    :param c2: the second color.
+    :param alpha: the interpolation factor in [0, 1].
+    :return: the blended color.
+    """
+    c1 = np.array(matplotlib.colors.ColorConverter.to_rgb(c1))
+    c2 = np.array(matplotlib.colors.ColorConverter.to_rgb(c2))
+    c = alpha * c1 + (1 - alpha) * c2
+    r, g, b = np.array(255 * c, dtype=int)
+    return f"#{r:02x}{g:02x}{b:02x}".upper()

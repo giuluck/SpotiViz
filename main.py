@@ -36,6 +36,8 @@ songs = [
 WEEKS = 6
 WINDOW = 7
 WIN_TYPE = 'cosine'
+FIGSIZE = (11, 7.5)
+EXPORT = 'pdf'
 
 sns.set_theme(style='whitegrid', context='poster')
 colors = [song.color for song in songs]
@@ -43,17 +45,17 @@ colors = [song.color for song in songs]
 if __name__ == '__main__':
     for average in [False, True]:
         if average:
-            title, export, window, win_type = f' ({WINDOW}-days moving average)', '_avg', WINDOW, WIN_TYPE
+            title, export, window, win_type = f' ({WINDOW}-days avg.)', '_avg', WINDOW, WIN_TYPE
         else:
             title, export, window, win_type = '', '', 1, None
 
         # PLOT DAILY LISTENERS (use data from the first released song)
-        ax = plt.figure(figsize=(16, 9), tight_layout=True).gca()
+        ax = plt.figure(figsize=FIGSIZE, tight_layout=True).gca()
         ax.yaxis.set_major_locator(MaxNLocator(integer=True))
         data = songs[0].rolling(window=window, win_type=win_type)
         sns.lineplot(data=data, x='date', y='listeners', linewidth=2, color='black')
         plt.xlim(data['date'].min(), data['date'].max())
-        _, y_max = plt.ylim(0)
+        _, y_max = plt.ylim(0, 330)
         for song in songs:
             # y_max = data[data['date'] == song.release]['listeners']
             plt.vlines(song.release, 0, y_max, colors=song.color, linewidth=2, linestyles='--', label=song.name)
@@ -66,14 +68,18 @@ if __name__ == '__main__':
         plt.fill_between([], 0, facecolor=blend_color('#000000', alpha=0.3), edgecolor='none', label='(Promo Period)')
         plt.legend(title='Song Release')
         plt.title(f'Daily Listeners{title}')
-        plt.savefig(f'exports/listeners{export}.pdf', format='pdf')
+        plt.savefig(f'exports/listeners{export}.{EXPORT}', format=EXPORT)
         plt.show()
 
         # PLOT STACKED DAILY STREAMS (use partial data from all the songs instead of the total number)
-        ax = plt.figure(figsize=(16, 9), tight_layout=True).gca()
+        ax = plt.figure(figsize=FIGSIZE, tight_layout=True).gca()
         ax.yaxis.set_major_locator(MaxNLocator(integer=True))
         data = merge_songs(songs, window=window, win_type=win_type).reset_index()
         data = data.pivot(columns='Song', index='date', values='streams').fillna(0.0)
+        plt.xlabel('date')
+        plt.xlim(data.index.min(), data.index.max())
+        plt.ylabel('streams')
+        plt.ylim(0, 410)
         plt.stackplot(
             data.index,
             *[data[s.name] for s in songs],
@@ -84,19 +90,18 @@ if __name__ == '__main__':
         )
         sns.despine()
         plt.legend(loc='upper left', title='Song')
-        plt.xlim(data.index.min(), data.index.max())
-        plt.ylim(0)
-        plt.xlabel('date')
-        plt.ylabel('streams')
         plt.title(f'Daily Streams{title}')
-        plt.savefig(f'exports/streams{export}.pdf', format='pdf')
+        plt.savefig(f'exports/streams{export}.{EXPORT}', format=EXPORT)
         plt.show()
 
         # PLOT COMPARED DAILY STREAMS
-        ax = plt.figure(figsize=(16, 9), tight_layout=True).gca()
+        ax = plt.figure(figsize=FIGSIZE, tight_layout=True).gca()
         ax.yaxis.set_major_locator(MaxNLocator(integer=True))
         data = merge_songs(songs, window=window, win_type=win_type)
         data = data[data['day'] <= WEEKS * 7]
+        plt.xticks(range(1, data['day'].max(), 7))
+        plt.xlim(data['day'].min(), data['day'].max())
+        plt.ylim(0, 410)
         for song in songs:
             for s, e in song.promos:
                 promo = data[data['Song'] == song.name].set_index('date')[s:e + timedelta(days=1)]
@@ -111,22 +116,24 @@ if __name__ == '__main__':
             style='Song',
             style_order=[s.name for s in songs],
             palette=colors,
-            linewidth=2,
-            legend=True
+            linewidth=2
         )
+        # dummy fill to add "Promo Period" marker in the legend
+        plt.fill_between([], 0, facecolor=blend_color('#000000', alpha=0.3), edgecolor='none', label='(Promo Period)')
+        plt.legend(title='Song')
         sns.despine()
-        plt.xticks(range(0, data['day'].max(), 7))
-        plt.xlim(data['day'].min(), data['day'].max())
-        plt.ylim(0)
-        plt.title(f'Daily Streams in the first {WEEKS} Weeks from Release Date{title}')
-        plt.savefig(f'exports/releases{export}.pdf', format='pdf')
+        plt.title(f'Streams in the first {WEEKS} Weeks after Release{title}')
+        plt.savefig(f'exports/releases{export}.{EXPORT}', format=EXPORT)
         plt.show()
 
         # PLOT COMPARED FOLLOWERS
-        ax = plt.figure(figsize=(16, 9), tight_layout=True).gca()
+        ax = plt.figure(figsize=FIGSIZE, tight_layout=True).gca()
         ax.yaxis.set_major_locator(MaxNLocator(integer=True))
         data = merge_songs(songs, window=window, win_type=win_type)
         data = data[data['day'] <= WEEKS * 7]
+        plt.xticks(range(1, data['day'].max(), 7))
+        plt.xlim(data['day'].min(), data['day'].max())
+        plt.ylim(0, 24)
         for song in songs:
             for s, e in song.promos:
                 promo = data[data['Song'] == song.name].set_index('date')[s:e + timedelta(days=1)]
@@ -141,13 +148,12 @@ if __name__ == '__main__':
             style='Song',
             style_order=[s.name for s in songs],
             palette=colors,
-            linewidth=2,
-            legend=True
+            linewidth=2
         )
+        # dummy fill to add "Promo Period" marker in the legend
+        plt.fill_between([], 0, facecolor=blend_color('#000000', alpha=0.3), edgecolor='none', label='(Promo Period)')
+        plt.legend(title='Song')
         sns.despine()
-        plt.xticks(range(0, data['day'].max(), 7))
-        plt.xlim(data['day'].min(), data['day'].max())
-        plt.ylim(0)
-        plt.title(f'Followers Gained in the first {WEEKS} Weeks from Release Date{title}')
-        plt.savefig(f'exports/releases{export}.pdf', format='pdf')
+        plt.title(f'Followers in the first {WEEKS} Weeks after Release{title}')
+        plt.savefig(f'exports/followers{export}.{EXPORT}', format=EXPORT)
         plt.show()
